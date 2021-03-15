@@ -1,0 +1,54 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger: none
+
+jobs:
+  - job: build_api
+    pool:
+     vmImage: 'windows-latest'
+    workspace:
+      clean: all
+    steps:
+    - task: Npm@1
+      inputs:
+        command: 'custom'
+        customCommand: install -g json2yaml
+    - bash: |
+        json2yaml $JSON_FILE > $YAML_OUTPUT
+      displayName: 'Bash Script'
+      env:
+        JSON_FILE: swagger.json
+        YAML_OUTPUT: $(Pipeline.Workspace)\swagger-converted.yml
+    - publish: $(Pipeline.Workspace)\swagger-converted.yml
+      artifact: drop
+  - deployment: deploy_prod
+    dependsOn: build_api
+    environment: apim_prod
+    workspace:
+      clean: all
+    pool:
+     vmImage: 'windows-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: stephane-eyskens.apim.apim.apim@3
+            displayName: 'API Management - Create/Update API '
+            inputs:
+              ConnectedServiceNameARM: '<SERVICE CONNECTION NAME>'
+              ResourceGroupName: '<RESOURCE GROUP NAME>'
+              ApiPortalName: '<APIM PORTAL NAME>'
+              UseProductCreatedByPreviousTask: false
+              product1: Starter
+              OpenAPISpec: v3
+              Format: yaml
+              SwaggerPicker: Artifact
+              swaggerartifact: '$(Pipeline.Workspace)\drop\swagger-converted.yml'
+              targetapi: 'echo-api'
+              DisplayName: 'Echo API'
+              pathapi: echo
+              TemplateSelector: CORS
+              MicrosoftApiManagementAPIVersion: '2018-01-01'
